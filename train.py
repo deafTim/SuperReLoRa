@@ -1,49 +1,48 @@
-import torch
 import torch.nn as nn
 import torch.optim as optim
 from model import MyModel
-from utils import smooth_restart_weights
+from utils import load_data, smooth_decrease_weights
+from transformers import BertTokenizer
 
-# Hyperparameters
-learning_rate = 0.001
-batch_size = 64
-epochs = 100
+# Parameters (you can adjust these as needed)
+max_length = 128
+batch_size = 32
+learning_rate = 1e-4
+num_epochs = 3
+decrease_factor = 0.95  # Adjust this factor for the weight decrease
 
-# Device configuration
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# Load the tokenizer and data
+tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+train_loader = load_data(tokenizer, max_length, batch_size)
 
-# Model
-model = MyModel().to(device)
+# Initialize the model
+model = MyModel()  # Replace with your model's class name if different
+model.train()
 
-# Loss and optimizer
+# Define loss function and optimizer
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
-# Data loader (example with random data)
-# Replace this with your actual data loader
-train_loader = [(torch.randn(batch_size, 10), torch.randint(0, 2, (batch_size,))) for _ in range(100)]
-
 # Training loop
-for epoch in range(epochs):
-    for i, (inputs, labels) in enumerate(train_loader):
-        # Move tensors to the configured device
-        inputs = inputs.to(device)
-        labels = labels.to(device)
+for epoch in range(num_epochs):
+    for batch in train_loader:
+        input_ids = batch['input_ids']
+        attention_mask = batch['attention_mask']
+        labels = batch['labels']
 
         # Forward pass
-        outputs = model(inputs)
+        outputs = model(input_ids, attention_mask)
         loss = criterion(outputs, labels)
 
-        # Backward and optimize
+        # Backward pass and optimization
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
-        if (i+1) % 100 == 0:
-            print(f'Epoch [{epoch+1}/{epochs}], Step [{i+1}/{len(train_loader)}], Loss: {loss.item():.4f}')
+        # Gradually decrease weights of low-rank matrices
+        smooth_decrease_weights(model, decrease_factor)
 
-    # Example: Smooth restart of weights at the end of each epoch
-    if epoch % 2 == 0:  # Example condition, adjust as needed
-        smooth_restart_weights(model, alpha=0.1)
+    print(f"Epoch {epoch+1}/{num_epochs}, Loss: {loss.item()}")
 
-print("Training finished.")
+# Save the model if needed
+# torch.save(model.state_dict(), 'model.pth')
