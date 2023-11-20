@@ -1,47 +1,44 @@
 import torch
 import torch.nn as nn
+from transformers import BertModel
 import math
 
-class ReLoRaLinear(nn.Module):
-    def __init__(self, in_features, out_features, rank):
-        super(ReLoRaLinear, self).__init__()
-        self.in_features = in_features
-        self.out_features = out_features
-        self.rank = rank
+class MyModel(nn.Module):
+    def __init__(self, lora_dim=32):
+        super(MyModel, self).__init__()
+        self.bert = BertModel.from_pretrained('bert-base-uncased')
 
-        # Original weight and bias
-        self.weight = nn.Parameter(torch.Tensor(out_features, in_features))
-        self.bias = nn.Parameter(torch.Tensor(out_features))
+        # Assuming the hidden size of BERT base model is 768
+        hidden_size = 768
 
         # Low-rank matrices
-        self.lora_A = nn.Parameter(torch.Tensor(rank, in_features))
-        self.lora_B = nn.Parameter(torch.Tensor(out_features, rank))
+        self.lora_A = nn.Parameter(torch.Tensor(lora_dim, hidden_size))
+        self.lora_B = nn.Parameter(torch.Tensor(hidden_size, lora_dim))
+
+        # Output layer
+        self.output = nn.Linear(hidden_size, 2)  # Example for binary classification
 
         self.reset_parameters()
 
     def reset_parameters(self):
-        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
-        nn.init.zeros_(self.bias)
+        # Initialize parameters
         nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
-        nn.init.zeros_(self.lora_B)
+        nn.init.kaiming_uniform_(self.lora_B, a=math.sqrt(5))
+        nn.init.zeros_(self.output.bias)
 
-    def forward(self, input):
-        # Low-rank approximation
-        lora_output = torch.mm(self.lora_B, torch.mm(self.lora_A, input.T)).T
-        # Combine with original linear transformation
-        return nn.functional.linear(input, self.weight, self.bias) + lora_output
+    def forward(self, input_ids, attention_mask):
+        # Get the output from the BERT model
+        outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
+        sequence_output = outputs.last_hidden_state
 
-class MyModel(nn.Module):
-    def __init__(self):
-        super(MyModel, self).__init__()
-        self.layer1 = nn.Linear(in_features=10, out_features=50)  # Adjusted to match input features
-        self.relu = nn.ReLU()
-        self.layer2 = nn.Linear(in_features=50, out_features=10)   # Another example layer
+        # Apply low-rank approximation
+        lora_output = torch.matmul(sequence_output, self.lora_A.T)  # Transpose lora_A
+        lora_output = torch.matmul(lora_output, self.lora_B.T)
 
+        # Combine BERT output and low-rank approximation
+        combined_output = sequence_output + lora_output
 
-    def forward(self, x):
-        # Define the forward pass
-        x = self.layer1(x)
-        x = self.relu(x)
-        x = self.layer2(x)
-        return x
+        # Pass through the output layer
+        logits = self.output(combined_output[:, 0, :])
+
+        return logits
