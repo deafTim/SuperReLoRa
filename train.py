@@ -1,49 +1,64 @@
+import argparse
 from transformers import BertTokenizer
 import torch.nn as nn
 import torch.optim as optim
 from model import MyModel
 from utils import load_data, smooth_decrease_weights
 
-model_name = 'bert-base-uncased'
-task_name = 'mrpc'  # Example GLUE task
-max_length = 128
-batch_size = 16  # Smaller batch size
-learning_rate = 1e-4
-num_epochs = 5  # Only one epoch for testing
-decrease_factor = 0.95  # Adjust this factor for the weight decrease
+def parse_args():
+    parser = argparse.ArgumentParser(description="Training script for SuperReLoRa.")
 
-# Load a smaller subset of data for quick testing
-tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-train_loader = load_data(task_name, model_name, max_length, batch_size)
+    # Add arguments
+    parser.add_argument("--model_name", type=str, default="bert-base-uncased", help="Model identifier")
+    parser.add_argument("--task_name", type=str, default="mrpc", help="GLUE task name")
+    parser.add_argument("--max_length", type=int, default=128, help="Maximum sequence length")
+    parser.add_argument("--batch_size", type=int, default=16, help="Batch size for training")
+    parser.add_argument("--learning_rate", type=float, default=1e-4, help="Learning rate")
+    parser.add_argument("--num_epochs", type=int, default=5, help="Number of training epochs")
+    parser.add_argument("--decrease_factor", type=float, default=0.95, help="Factor for weight decrease")
 
-# Initialize the model
-model = MyModel()  # Replace with your model's class name if different
-model.train()
+    # Parse arguments
+    args = parser.parse_args()
+    return args
 
-# Define loss function and optimizer
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
-# Training loop
-for epoch in range(num_epochs):
-    for batch in train_loader:
-        input_ids = batch['input_ids']
-        attention_mask = batch['attention_mask']
-        labels = batch['labels']
+    # Use args to access the command-line arguments
+    # Example: print(args.model_name)
 
-        # Forward pass
-        outputs = model(input_ids, attention_mask)
-        loss = criterion(outputs, labels)
+if __name__ == "__main__":
+    args = parse_args()
+    # Load data
+    tokenizer = BertTokenizer.from_pretrained(args.model_name)
+    train_loader = load_data(args.task_name, args.model_name, args.max_length, args.batch_size)
 
-        # Backward pass and optimization
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+    # Initialize the model
+    model = MyModel()  # Replace with your model's class name if different
+    model.train()
 
-        # Gradually decrease weights of low-rank matrices
-        smooth_decrease_weights(model, decrease_factor)
+    # Define loss function and optimizer
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
 
-    print(f"Epoch {epoch+1}/{num_epochs}, Loss: {loss.item()}")
+    # Training loop
+    for epoch in range(args.num_epochs):
+        for batch in train_loader:
+            input_ids = batch['input_ids']
+            attention_mask = batch['attention_mask']
+            labels = batch['labels']
 
-# Save the model if needed
-# torch.save(model.state_dict(), 'model.pth')
+            # Forward pass
+            outputs = model(input_ids, attention_mask)
+            loss = criterion(outputs, labels)
+
+            # Backward pass and optimization
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            # Gradually decrease weights of low-rank matrices
+            smooth_decrease_weights(model, args.decrease_factor)
+
+        print(f"Epoch {epoch+1}/{args.num_epochs}, Loss: {loss.item()}")
+
+    # Save the model if needed
+    # torch.save(model.state_dict(), 'model.pth')
