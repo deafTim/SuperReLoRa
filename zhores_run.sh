@@ -38,7 +38,7 @@ module load python/anaconda3
 conda activate superrelora
 
 
-srun python3 run_func.py
+srun python3 train.py
 
 
 exit 0
