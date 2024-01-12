@@ -8,6 +8,7 @@
 # conda activate && conda remove --name superrelora --all -y
 # conda create --name superrelora python=3.9 -y
 # conda activate superrelora
+# pip install -r  requirements.txt
 
 # ---------------------------------
 # --- How to use this shell script:
